@@ -113,32 +113,36 @@
       </div>
     </nav>
 
-    <!-- Hero Section with 3D Lightning -->
+    <!-- Hero Section with Realistic Looping Lightning -->
 <section
-  class="relative bg-gradient-to-br from-purple-950 via-purple-800 to-black text-white min-h-screen flex flex-col items-center justify-center overflow-hidden"
+  id="hero"
+  class="relative flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-black text-white overflow-hidden"
 >
-  <!-- 3D Lightning Canvas -->
-  <canvas id="lightningScene" class="absolute inset-0 w-full h-full z-0"></canvas>
+  <!-- Canvas for Lightning -->
+  <canvas id="lightningCanvas" class="absolute inset-0 w-full h-full"></canvas>
 
   <!-- Hero Content -->
   <div class="relative z-10 text-center px-6">
-    <h1 class="text-5xl font-extrabold mb-4">
-      Power Your Business with <span class="text-yellow-400">AI Automation</span>
+    <h1 class="text-5xl sm:text-6xl font-extrabold mb-6">
+      Transform Your Business with <span class="text-yellow-400">AI Automation</span>
     </h1>
-    <p class="text-lg text-gray-300 max-w-xl mx-auto">
-      Automate workflows, scale faster, and spark innovation with next-gen AI.
+    <p class="text-lg text-gray-300 max-w-2xl mx-auto mb-8">
+      Empower your business with intelligent automation and cutting-edge AI solutions.
     </p>
-    <div class="flex flex-col sm:flex-row gap-4 mt-6 justify-center">
-      <a href="#contact" class="px-6 py-3 rounded-full bg-yellow-400 text-purple-900 font-semibold shadow-lg hover:scale-105 transition">
-        Start Your Journey
-      </a>
-      <a href="#services" class="px-6 py-3 rounded-full border-2 border-yellow-400 text-yellow-400 font-semibold hover:bg-yellow-400 hover:text-purple-900 shadow-md hover:scale-105 transition">
-        Explore Services
-      </a>
+    <div class="flex flex-col sm:flex-row gap-4 justify-center">
+      <a
+        href="#contact"
+        class="bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-full hover:bg-yellow-300 shadow-lg transition"
+        >Start Your Journey</a
+      >
+      <a
+        href="#services"
+        class="border-2 border-yellow-400 text-yellow-400 font-semibold px-6 py-3 rounded-full hover:bg-yellow-400 hover:text-purple-900 transition"
+        >Explore Services</a
+      >
     </div>
   </div>
 </section>
-
 
     <!-- Services Section -->
     <section id="services" class="py-20 bg-gray-50">
@@ -503,74 +507,121 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
 
 <script>
-  // === 3D LIGHTNING ANIMATION ===
-  let scene, camera, renderer, lightningBolts = [];
+  // === 3D Lightning Bolt Animation ===
+  let scene, camera, renderer, lightning, sparks = [], clock;
 
   function initLightning() {
-    const canvas = document.getElementById("lightningScene");
+    const canvas = document.getElementById("lightningCanvas");
     scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.z = 15;
+    camera = new THREE.PerspectiveCamera(
+      75,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+    camera.position.z = 12;
 
     renderer = new THREE.WebGLRenderer({ canvas, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setClearColor(0x000000, 0);
 
-    // Add soft glow background light
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
+    clock = new THREE.Clock();
 
-    const pointLight = new THREE.PointLight(0xffffaa, 1.5, 100);
-    pointLight.position.set(0, 0, 10);
-    scene.add(pointLight);
+    // Ambient glow
+    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambient);
 
-    // Create multiple lightning bolts
-    for (let i = 0; i < 6; i++) {
-      lightningBolts.push(createLightning());
+    // Create lightning bolt
+    lightning = createLightningBolt();
+    scene.add(lightning);
+
+    // Create sparks
+    for (let i = 0; i < 30; i++) {
+      const spark = createSpark();
+      sparks.push(spark);
+      scene.add(spark);
     }
 
-    animateLightning();
+    animate();
+    setInterval(resetLightning, 3000); // Flash every 3 seconds
   }
 
-  function createLightning() {
-    const numPoints = 20;
-    const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(numPoints * 3);
-
-    for (let i = 0; i < numPoints; i++) {
-      positions[i * 3] = (Math.random() - 0.5) * 20; // X
-      positions[i * 3 + 1] = i - 10; // Y
-      positions[i * 3 + 2] = (Math.random() - 0.5) * 5; // Z depth
+  function createLightningBolt() {
+    const points = [];
+    const segments = 12;
+    for (let i = 0; i < segments; i++) {
+      const x = (Math.random() - 0.5) * 0.8;
+      const y = i - segments / 2;
+      const z = (Math.random() - 0.5) * 1.5;
+      points.push(new THREE.Vector3(x * 3, y * 1.2, z));
     }
 
-    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineBasicMaterial({
-      color: 0xffff99,
+      color: 0xffffaa,
       transparent: true,
       opacity: 0.9,
-      linewidth: 2,
+      linewidth: 6,
     });
 
-    const line = new THREE.Line(geometry, material);
-    scene.add(line);
-
-    return { line, speed: Math.random() * 0.02 + 0.005 };
+    const bolt = new THREE.Line(geometry, material);
+    bolt.scale.set(1, 1.5, 1);
+    return bolt;
   }
 
-  function animateLightning() {
-    requestAnimationFrame(animateLightning);
-    lightningBolts.forEach((bolt) => {
-      const positions = bolt.line.geometry.attributes.position.array;
-      for (let i = 0; i < positions.length; i += 3) {
-        positions[i] += (Math.random() - 0.5) * 0.3; // X flicker
-        positions[i + 2] += (Math.random() - 0.5) * 0.3; // Z flicker
-      }
-      bolt.line.geometry.attributes.position.needsUpdate = true;
+  function createSpark() {
+    const geometry = new THREE.SphereGeometry(0.05, 8, 8);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xffdd88,
+      transparent: true,
+      opacity: Math.random() * 0.7 + 0.3,
+    });
+    const spark = new THREE.Mesh(geometry, material);
+    spark.position.set(
+      (Math.random() - 0.5) * 6,
+      (Math.random() - 0.5) * 6,
+      (Math.random() - 0.5) * 3
+    );
+    return spark;
+  }
+
+  function resetLightning() {
+    scene.remove(lightning);
+    lightning = createLightningBolt();
+    lightning.material.opacity = 0;
+    scene.add(lightning);
+
+    // Flash effect
+    const flash = document.createElement("div");
+    flash.style.position = "absolute";
+    flash.style.inset = 0;
+    flash.style.background = "radial-gradient(circle, rgba(255,255,255,0.5) 0%, transparent 70%)";
+    flash.style.transition = "opacity 0.4s ease-out";
+    flash.style.pointerEvents = "none";
+    document.getElementById("hero").appendChild(flash);
+    flash.offsetHeight;
+    flash.style.opacity = 0;
+    setTimeout(() => flash.remove(), 400);
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+
+    // Lightning flicker
+    if (lightning) {
+      lightning.material.opacity = 0.7 + Math.sin(t * 20) * 0.3;
+    }
+
+    // Spark movement
+    sparks.forEach((spark) => {
+      spark.position.y -= 0.05 + Math.random() * 0.02;
+      spark.position.x += (Math.random() - 0.5) * 0.1;
+      spark.position.z += (Math.random() - 0.5) * 0.1;
+      if (spark.position.y < -5) spark.position.y = 5;
     });
 
-    scene.rotation.y += 0.001;
     renderer.render(scene, camera);
   }
 
@@ -580,8 +631,9 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  initLightning();
+  if (window.innerWidth > 768) initLightning();
 </script>
+
 
   </body>
 </html>
