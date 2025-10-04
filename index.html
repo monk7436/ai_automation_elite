@@ -339,6 +339,37 @@
             required
             class="w-full p-3 rounded-md text-gray-900"
           />
+
+          <div class="flex gap-2">
+    <select
+      name="country_code"
+      required
+      class="w-1/3 p-3 rounded-md text-gray-900 bg-white border border-gray-300"
+    >
+      <option value="+1">🇺🇸 +1</option>
+      <option value="+44">🇬🇧 +44</option>
+      <option value="+61">🇦🇺 +61</option>
+      <option value="+91" selected>🇮🇳 +91</option>
+      <option value="+81">🇯🇵 +81</option>
+      <option value="+49">🇩🇪 +49</option>
+      <option value="+33">🇫🇷 +33</option>
+      <option value="+971">🇦🇪 +971</option>
+      <option value="+65">🇸🇬 +65</option>
+    </select>
+
+    <input
+      type="tel"
+      name="phone"
+      placeholder="10-digit Phone Number"
+      pattern="[0-9]{10}"
+      maxlength="10"
+      minlength="10"
+      required
+      class="w-2/3 p-3 rounded-md text-gray-900 border border-gray-300"
+      oninput="this.value=this.value.replace(/[^0-9]/g,'');"
+    />
+  </div>
+  
           <textarea
             name="message"
             rows="4"
