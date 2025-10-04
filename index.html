@@ -113,13 +113,13 @@
       </div>
     </nav>
 
-    <!-- Hero Section with Realistic Looping Lightning -->
-<section
-  id="hero"
-  class="relative flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-black text-white overflow-hidden"
->
-  <!-- Canvas for Lightning -->
-  <canvas id="lightningCanvas" class="absolute inset-0 w-full h-full"></canvas>
+   <!-- Hero Section with Purple Plasma Lightning -->
+<section id="hero" class="relative flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-black text-white overflow-hidden">
+  <!-- Canvas for Three.js -->
+  <canvas id="lightningCanvas" class="absolute inset-0 w-full h-full z-0"></canvas>
+
+  <!-- Flash overlay (for the strike) -->
+  <div id="strike-flash" style="position:absolute;inset:0;background:radial-gradient(circle at 50% 40%, rgba(255,230,255,0.25) 0%, rgba(180,100,255,0.06) 15%, transparent 40%);opacity:0;pointer-events:none;z-index:2;"></div>
 
   <!-- Hero Content -->
   <div class="relative z-10 text-center px-6">
@@ -130,16 +130,8 @@
       Empower your business with intelligent automation and cutting-edge AI solutions.
     </p>
     <div class="flex flex-col sm:flex-row gap-4 justify-center">
-      <a
-        href="#contact"
-        class="bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-full hover:bg-yellow-300 shadow-lg transition"
-        >Start Your Journey</a
-      >
-      <a
-        href="#services"
-        class="border-2 border-yellow-400 text-yellow-400 font-semibold px-6 py-3 rounded-full hover:bg-yellow-400 hover:text-purple-900 transition"
-        >Explore Services</a
-      >
+      <a href="#contact" class="bg-yellow-400 text-purple-900 font-semibold px-6 py-3 rounded-full hover:bg-yellow-300 shadow-lg transition">Start Your Journey</a>
+      <a href="#services" class="border-2 border-yellow-400 text-yellow-400 font-semibold px-6 py-3 rounded-full hover:bg-yellow-400 hover:text-purple-900 transition">Explore Services</a>
     </div>
   </div>
 </section>
@@ -503,137 +495,305 @@
       });
     </script>
 
-    <!-- Three.js CDN -->
+   <!-- Three.js CDN -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
 
 <script>
-  // === 3D Lightning Bolt Animation ===
-  let scene, camera, renderer, lightning, sparks = [], clock;
+/*
+ Purple Plasma Lightning
+ - Single thick bolt (tube geometry) + outer glow shells
+ - Branch veins (lines) that appear during strike
+ - Spark particle burst
+ - Bright flash overlay
+ - Loops every 3 seconds
+ - Disabled on small screens (<=768px) — fallback CSS pulse is recommended
+*/
 
-  function initLightning() {
-    const canvas = document.getElementById("lightningCanvas");
-    scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(
-      75,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      1000
-    );
-    camera.position.z = 12;
-
-    renderer = new THREE.WebGLRenderer({ canvas, alpha: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setClearColor(0x000000, 0);
-
-    clock = new THREE.Clock();
-
-    // Ambient glow
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambient);
-
-    // Create lightning bolt
-    lightning = createLightningBolt();
-    scene.add(lightning);
-
-    // Create sparks
-    for (let i = 0; i < 30; i++) {
-      const spark = createSpark();
-      sparks.push(spark);
-      scene.add(spark);
-    }
-
-    animate();
-    setInterval(resetLightning, 3000); // Flash every 3 seconds
+(function(){
+  if (window.innerWidth <= 768) {
+    // Optional mobile fallback: subtle pulsing background (no WebGL)
+    const hero = document.getElementById('hero');
+    if (hero) hero.style.background = 'radial-gradient(circle at 50% 40%, rgba(140, 86, 255, 0.12), rgba(80,20,120,0.08) 40%, rgba(0,0,0,0.6))';
+    return;
   }
 
-  function createLightningBolt() {
-    const points = [];
-    const segments = 12;
-    for (let i = 0; i < segments; i++) {
-      const x = (Math.random() - 0.5) * 0.8;
-      const y = i - segments / 2;
-      const z = (Math.random() - 0.5) * 1.5;
-      points.push(new THREE.Vector3(x * 3, y * 1.2, z));
+  // Basic Three.js setup
+  const canvas = document.getElementById('lightningCanvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 0, 18);
+
+  // subtle ambient
+  const ambient = new THREE.AmbientLight(0xffffff, 0.25);
+  scene.add(ambient);
+
+  // subtle point light to add shimmer
+  const point = new THREE.PointLight(0xffe6ff, 1.0, 200);
+  point.position.set(0, 5, 10);
+  scene.add(point);
+
+  // container for all bolt objects
+  const group = new THREE.Group();
+  scene.add(group);
+
+  // utility: random range
+  const rand = (a,b) => a + Math.random()*(b-a);
+
+  // Create bolt geometry: a vertical spline with noise
+  function makeBoltCurve(detail=14, scaleX=1.6, length=12) {
+    const pts = [];
+    for (let i=0;i<detail;i++){
+      const t = i/(detail-1);
+      const y = (t - 0.5) * length; // center at 0
+      // X offset stronger in middle for dramatic bend
+      const x = (Math.sin(t * Math.PI) * rand(-0.6,0.6)) * scaleX;
+      const z = rand(-1.8,1.8);
+      pts.push(new THREE.Vector3(x, y, z));
     }
-
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({
-      color: 0xffffaa,
-      transparent: true,
-      opacity: 0.9,
-      linewidth: 6,
-    });
-
-    const bolt = new THREE.Line(geometry, material);
-    bolt.scale.set(1, 1.5, 1);
-    return bolt;
+    return new THREE.CatmullRomCurve3(pts);
   }
 
-  function createSpark() {
-    const geometry = new THREE.SphereGeometry(0.05, 8, 8);
+  // Create tube mesh with additive material (main fat bolt)
+  function createBoltMesh(curve) {
+    const tubularSegments = 64;
+    const radius = 0.18; // thickness of main bolt
+    const geometry = new THREE.TubeGeometry(curve, tubularSegments, radius, 8, false);
+
     const material = new THREE.MeshBasicMaterial({
-      color: 0xffdd88,
+      color: 0x9a4dff, // purple core base
       transparent: true,
-      opacity: Math.random() * 0.7 + 0.3,
+      opacity: 1.0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
     });
-    const spark = new THREE.Mesh(geometry, material);
-    spark.position.set(
-      (Math.random() - 0.5) * 6,
-      (Math.random() - 0.5) * 6,
-      (Math.random() - 0.5) * 3
-    );
-    return spark;
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.castShadow = false;
+    return mesh;
   }
 
-  function resetLightning() {
-    scene.remove(lightning);
-    lightning = createLightningBolt();
-    lightning.material.opacity = 0;
-    scene.add(lightning);
-
-    // Flash effect
-    const flash = document.createElement("div");
-    flash.style.position = "absolute";
-    flash.style.inset = 0;
-    flash.style.background = "radial-gradient(circle, rgba(255,255,255,0.5) 0%, transparent 70%)";
-    flash.style.transition = "opacity 0.4s ease-out";
-    flash.style.pointerEvents = "none";
-    document.getElementById("hero").appendChild(flash);
-    flash.offsetHeight;
-    flash.style.opacity = 0;
-    setTimeout(() => flash.remove(), 400);
+  // Glow shells: same geometry but larger and softer — stacked for outer glow
+  function createGlowShell(curve, scaleFactor, colorHex, opacity) {
+    const geometry = new THREE.TubeGeometry(curve, 64, 0.18 * scaleFactor, 8, false);
+    const material = new THREE.MeshBasicMaterial({
+      color: colorHex,
+      transparent: true,
+      opacity: opacity,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    return mesh;
   }
 
+  // Branch veins: random short lines off main curve
+  function createBranches(curve, count=6) {
+    const branches = new THREE.Group();
+    const pts = curve.getPoints(40);
+    for (let i=0;i<count;i++){
+      const baseIndex = Math.floor(rand(8, pts.length-6));
+      const base = pts[baseIndex];
+      const length = rand(1.0, 3.0);
+      const dir = new THREE.Vector3(rand(-1,1), rand(-0.6,0.6), rand(-0.8,0.8)).normalize();
+      const ptsBranch = [base.clone(), base.clone().add(dir.multiplyScalar(length)).add(new THREE.Vector3(rand(-0.4,0.4), rand(-0.4,0.4), rand(-0.4,0.4)))];
+      const geom = new THREE.BufferGeometry().setFromPoints(ptsBranch);
+      const mat = new THREE.LineBasicMaterial({ color: 0xe6ccff, linewidth: 2, transparent:true, opacity:0.0, blending: THREE.AdditiveBlending, depthWrite: false });
+      const line = new THREE.Line(geom, mat);
+      branches.add(line);
+    }
+    return branches;
+  }
+
+  // Sparks particle system
+  function createSparks(count=60) {
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    for (let i=0;i<count;i++){
+      positions[i*3] = rand(-3,3);
+      positions[i*3+1] = rand(-6,6);
+      positions[i*3+2] = rand(-3,3);
+      sizes[i] = rand(0.02, 0.09);
+    }
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+    const material = new THREE.PointsMaterial({
+      color: 0xffe6ff,
+      size: 0.12,
+      transparent: true,
+      opacity: 0.0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+
+    const points = new THREE.Points(geometry, material);
+    return points;
+  }
+
+  // Create initial bolt + shells + branches + sparks
+  let mainBolt, shell1, shell2, shell3, branches, sparks;
+  function spawnBolt() {
+    // clear previous
+    if (mainBolt) { group.remove(mainBolt); mainBolt.geometry.dispose(); mainBolt.material.dispose(); }
+    if (shell1) { group.remove(shell1); shell1.geometry.dispose(); shell1.material.dispose(); }
+    if (shell2) { group.remove(shell2); shell2.geometry.dispose(); shell2.material.dispose(); }
+    if (shell3) { group.remove(shell3); shell3.geometry.dispose(); shell3.material.dispose(); }
+    if (branches) { group.remove(branches); }
+    if (sparks) { group.remove(sparks); }
+
+    const curve = makeBoltCurve(18, 1.8, 14);
+
+    mainBolt = createBoltMesh(curve);
+    mainBolt.material.color.setHex(0xd7a0ff); // bright purple core
+    mainBolt.material.opacity = 0.0;
+
+    shell1 = createGlowShell(curve, 2.2, 0xbb66ff, 0.0); // inner glow
+    shell2 = createGlowShell(curve, 3.4, 0x7b3bff, 0.0); // outer blur
+    shell3 = createGlowShell(curve, 5.5, 0x4a1f8b, 0.0); // soft wide halo
+
+    branches = createBranches(curve, 8);
+    sparks = createSparks(90);
+
+    // put in group
+    group.add(shell3);
+    group.add(shell2);
+    group.add(shell1);
+    group.add(mainBolt);
+    group.add(branches);
+    group.add(sparks);
+
+    // initial transforms
+    group.rotation.y = rand(-0.2, 0.2);
+  }
+
+  spawnBolt();
+
+  // Animation helpers
+  const clock = new THREE.Clock();
+  let strikeTime = -999;
+  let striking = false;
+
+  function triggerStrike() {
+    strikeTime = performance.now();
+    striking = true;
+
+    // make bolt visible quickly
+    if (mainBolt) mainBolt.material.opacity = 1.0;
+    if (shell1) shell1.material.opacity = 0.45;
+    if (shell2) shell2.material.opacity = 0.28;
+    if (shell3) shell3.material.opacity = 0.12;
+
+    // branches appear
+    branches.children.forEach((ln, idx) => {
+      ln.material.opacity = 0.9;
+    });
+
+    // sparks pop (set opacity)
+    sparks.material.opacity = 1.0;
+
+    // overlay flash
+    const flash = document.getElementById('strike-flash');
+    if (flash) {
+      flash.style.transition = 'none';
+      flash.style.opacity = '0.9';
+      setTimeout(()=>{ flash.style.transition = 'opacity 450ms ease-out'; flash.style.opacity = '0.0'; }, 80);
+    }
+
+    // small pulse on camera / group
+    const originalZ = camera.position.z;
+    // quick camera push (soft)
+    // we'll animate in render loop
+  }
+
+  // Loop strike every 3.2 seconds
+  triggerStrike();
+  const strikeInterval = 3200;
+  setInterval(()=> {
+    // respawn geometry slightly to vary shape each strike
+    spawnBolt();
+    triggerStrike();
+  }, strikeInterval);
+
+  // render loop
   function animate() {
     requestAnimationFrame(animate);
     const t = clock.getElapsedTime();
 
-    // Lightning flicker
-    if (lightning) {
-      lightning.material.opacity = 0.7 + Math.sin(t * 20) * 0.3;
+    // subtle rotation
+    group.rotation.y += 0.0008;
+
+    // flicker core and shells after strike
+    const sinceStrike = (performance.now() - strikeTime);
+    if (striking) {
+      // fade out over ~900ms
+      const fade = Math.max(0, 1 - (sinceStrike / 900));
+      if (mainBolt) mainBolt.material.opacity = 0.6 * fade + Math.sin(t * 45) * 0.05;
+      if (shell1) shell1.material.opacity = 0.45 * fade;
+      if (shell2) shell2.material.opacity = 0.28 * fade;
+      if (shell3) shell3.material.opacity = 0.12 * fade * (1 + Math.sin(t*6)*0.1);
+
+      // branches fade faster
+      branches.children.forEach((ln, idx) => {
+        ln.material.opacity = Math.max(0, 0.9 * fade - idx*0.05);
+      });
+
+      // sparks pop outward and fade
+      const posAttr = sparks.geometry.attributes.position;
+      for (let i=0;i<posAttr.count;i++){
+        posAttr.array[i*3] += (Math.random()-0.5)*0.12 * (1 + (1-fade)*2);
+        posAttr.array[i*3+1] += (Math.random()-0.2)*0.14 * (1 + (1-fade)*2);
+        posAttr.array[i*3+2] += (Math.random()-0.5)*0.12 * (1 + (1-fade)*2);
+      }
+      posAttr.needsUpdate = true;
+      sparks.material.opacity = Math.max(0, fade);
+
+      if (fade <= 0.01) {
+        striking = false;
+        // hide branches and sparks fully
+        branches.children.forEach(ln=>ln.material.opacity=0);
+        sparks.material.opacity = 0;
+        mainBolt.material.opacity = 0;
+        shell1.material.opacity = 0;
+        shell2.material.opacity = 0;
+        shell3.material.opacity = 0;
+      }
+    } else {
+      // breathing idle glow
+      if (mainBolt) mainBolt.material.opacity = 0.03 + 0.02*Math.sin(t*1.5);
+      if (shell1) shell1.material.opacity = 0.01 + 0.01*Math.sin(t*1.2);
     }
 
-    // Spark movement
-    sparks.forEach((spark) => {
-      spark.position.y -= 0.05 + Math.random() * 0.02;
-      spark.position.x += (Math.random() - 0.5) * 0.1;
-      spark.position.z += (Math.random() - 0.5) * 0.1;
-      if (spark.position.y < -5) spark.position.y = 5;
-    });
+    // tiny jitter to geometry for natural flicker
+    if (mainBolt && mainBolt.geometry && mainBolt.geometry.attributes.position) {
+      const position = mainBolt.geometry.attributes.position;
+      for (let i=0;i<position.count;i++){
+        const ix = i*3;
+        position.array[ix] += (Math.random()-0.5)*0.0008;
+        position.array[ix+2] += (Math.random()-0.5)*0.0008;
+      }
+      position.needsUpdate = true;
+    }
 
     renderer.render(scene, camera);
   }
 
-  window.addEventListener("resize", () => {
+  animate();
+
+  // Resize handling
+  window.addEventListener('resize', ()=> {
+    renderer.setSize(window.innerWidth, window.innerHeight);
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  if (window.innerWidth > 768) initLightning();
+})();
 </script>
-
 
   </body>
 </html>
